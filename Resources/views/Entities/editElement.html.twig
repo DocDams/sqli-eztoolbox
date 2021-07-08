@@ -30,14 +30,21 @@
         {% block left_sidebar %}{% endblock left_sidebar %}
         <div class="container px-0 pb-4 mt-3 ez-content-edit-container">
             {{ form_start(form, {'attr': {'class': 'ez-form-validate'}}) }}
-
-            {% for field in form.children %}
-                {% if not field.rendered %}
+            {% for field in form.children  %}
+                {% if not field.rendered and field.vars.attr.onetomany is defined %}
+                    {{ form_label(field, null, {'label_attr':{'class':'ez-field-edit__label'}}) }}
+                    {% for property_name, property_infos in class.properties %}
+                        {% if property_name ==  field.vars.name %}
+                            <a href="{{ path( 'sqli_eztoolbox_entitymanager_entity_homepage',
+                                { 'fqcn': property_infos.onetomany.targetEntity }) }}"> Pour modifier les attributs de ce type voir : {{ property_infos.onetomany.targetEntity}} </a><br>
+                        {%  endif %}
+                    {%  endfor %}
+                {% else %}
                     {{ form_row(field) }}
                 {% endif %}
             {% endfor %}
 
-            {{ form_end(form) }}
+            {{ form_end(form, {'render_rest': false}) }}
         </div>
         {% block right_sidebar_wrapper %}
             <div class="col-sm-1 pt-4 px-0 bg-secondary ez-context-menu">

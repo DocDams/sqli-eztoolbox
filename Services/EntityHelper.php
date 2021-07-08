@@ -4,6 +4,7 @@ namespace SQLI\EzToolboxBundle\Services;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\EntityRepository;
+use phpDocumentor\Reflection\Types\Array_;
 use ReflectionException;
 use SQLI\EzToolboxBundle\Annotations\SQLIAnnotationManager;
 use SQLI\EzToolboxBundle\Classes\Filter;
@@ -44,17 +45,23 @@ class EntityHelper
         if ($fetchElements) {
             // Prepare a filter (only properties flagged as visible or without this annotation) for findAll
             $filteredColums = [];
+            $relationColumns = [];
             foreach ($annotatedClass['class']['properties'] as $propertyName => $propertyInfos) {
-                if ($propertyInfos['visible']) {
+                $isonetomany = $propertyInfos['onetomany'];
+                $ismanytoone = $propertyInfos['manytoone'];
+                if ($propertyInfos['visible'] && is_null($isonetomany) && is_null($ismanytoone)) {
                     $filteredColums[] = $propertyName;
+                } elseif ($isonetomany != null) {
+                    $relationColumns[$propertyName] = $propertyInfos['onetomany'];
+                } elseif ($ismanytoone != null) {
+                    $relationColumns[$propertyName] = $propertyInfos['manytoone'];
                 }
             }
-
             // Get filter in session if exists
             $filter = $this->filterEntityHelper->getFilter($fqcn);
 
             // Get all elements
-            $annotatedClass['elements'] = $this->findAll($fqcn, $filteredColums, $filter, $sort);
+            $annotatedClass['elements'] = $this->findAll($fqcn, $filteredColums, $relationColumns, $filter, $sort);
         }
 
         return $annotatedClass;
@@ -107,35 +114,54 @@ class EntityHelper
      *
      * @param string $entityClass FQCN
      * @param array|null $filteredColums
+     * @param array|null $relationColumns
      * @param Filter|null $filter
      * @param bool|array $sort Array( 'column_name' => '', 'order' => 'ASC|DESC' )
      * @return array
      */
-    public function findAll(string $entityClass, $filteredColums = null, $filter = null, $sort = false): array
-    {
+    public function findAll(
+        string $entityClass,
+        $filteredColums = null,
+        $relationColumns = null,
+        $filter = null,
+        $sort = false
+    ): array {
         /** @var $repository EntityRepository */
         $repository = $this->entityManager->getRepository($entityClass);
         $queryBuilder = $repository->createQueryBuilder('entity');
 
         // In case of filtering columns
         if (is_array($filteredColums)) {
-            array_walk($filteredColums, function (&$columnName) {
-                $columnName = "entity.$columnName";
-            });
+            array_walk(
+                $filteredColums,
+                function (&$columnName) {
+                    $columnName = "entity.$columnName";
+                }
+            );
             $select = implode(",", $filteredColums);
 
             // Change SELECT clause
-            $queryBuilder->select($select);
+            // if relation_columns is not empty then join must be added
+            if (is_array($relationColumns) && !empty($relationColumns)) {
+                foreach (array_keys($relationColumns) as $elt) {
+                    $queryBuilder->leftJoin('entity.' . $elt, $elt);
+                    $queryBuilder->addSelect($elt);
+                }
+            } else {
+                $queryBuilder->select($select);
+            }
         }
 
         // Filter
         if (!is_null($filter)) {
             // Add clause 'where'
-            $queryBuilder->andWhere(sprintf(
-                "entity.%s %s :value",
-                $filter->getColumnName(),
-                array_search($filter->getOperand(), Filter::OPERANDS_MAPPING)
-            ));
+            $queryBuilder->andWhere(
+                sprintf(
+                    "entity.%s %s :value",
+                    $filter->getColumnName(),
+                    array_search($filter->getOperand(), Filter::OPERANDS_MAPPING)
+                )
+            );
 
             $value = $filter->getValue();
 
@@ -188,13 +214,17 @@ class EntityHelper
     /**
      * @param $object
      * @param string $property_name
-     * @return false|string
+     * @return false|string|array
      */
     public function attributeValue($object, string $property_name)
     {
         if ($object[$property_name] instanceof \DateTime) {
             // Datetime doesn't have a __toString method
             return date_format($object[$property_name], "c");
+        } elseif ($object[$property_name] instanceof \stdClass) {
+            return (serialize($object[$property_name]));
+        } elseif (is_array($object[$property_name])) {
+            return $object[$property_name];
         } else {
             return strval($object[$property_name]);
         }

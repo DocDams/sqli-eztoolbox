@@ -23,7 +23,7 @@
 
 {% block content %}
     <section class="container my-4">
-        {# Filters filter_form #}
+        {# Filters filter_form #}
         {{ form_start( filter_form ) }}
         <table class="table ez-table--list">
             <thead>
@@ -119,13 +119,12 @@
 {% endblock %}
 
 {% block sqli_entity_element %}
-    {# Generate compound ID #}
+    {# Generate compound ID #}
     {% set compound_id = [] %}
     {% for column_name in class.primary_key %}
         {% set compound_id = compound_id|merge( { (column_name): sqli_admin_attribute( element, column_name ) } ) %}
     {% endfor %}
     {% set compound_id = compound_id|json_encode %}
-
     <tr>
         {% for property_name, property_infos in class.properties %}
             {% if property_infos.visible is same as(true) %}
@@ -137,6 +136,26 @@
                     <td><a href="{{ path( '_ezpublishLocation', { 'locationId': value } ) }}">{{ value }}</a></td>
                 {% elseif property_infos.extra_link == "tag" and bundle_exists( 'NetgenTagsBundle' ) %}
                     <td><a href="{{ path('netgen_tags_admin_tag_show', { 'tagId': value }) }}">{{ value }}</a></td>
+                {% elseif property_infos.onetomany is not null %}
+                    {% set manytoone_id = null %}
+                    {% for element_key, element_data in element %}
+                        {% if element_key == property_infos.onetomany.targetEntityPKey %}
+                            {% set manytoone_id = element_data %}
+                        {% endif %}
+                    {% endfor %}
+                    <td><a href="{{ path( 'sqli_eztoolbox_entitymanager_entity_homepage',
+                            { 'fqcn': property_infos.onetomany.targetEntity, 'manytoone_id' : manytoone_id, 'mappedBy' : property_infos.onetomany.mappedBy }) }}">
+                            Voir les {{ property_infos.onetomany.targetEntity }} liés</a></td>
+                {% elseif property_infos.manytoone is not null %}
+                    {% set manytoone = property_infos.manytoone %}
+                    {% for value_key, value_data in value %}
+                        {% if value_key == manytoone.targetEntityPKey %}
+                            <td><a href="{{ path( 'sqli_eztoolbox_entitymanager_entity_view_element',
+                                    { 'fqcn': manytoone.targetEntity, 'compound_id': '{"'~manytoone.targetEntityPKey~'"'~":"~'"'~value_data~'"}' }) }}">
+                                    Voir l'objet {{ manytoone.targetEntity }} lié</a>
+                            </td>
+                        {% endif %}
+                    {% endfor %}
                 {% else %}
                     {# ... else, just display the value #}
                     <td>{{ value }}</td>

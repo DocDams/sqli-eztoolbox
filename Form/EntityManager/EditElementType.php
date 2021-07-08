@@ -2,9 +2,14 @@
 
 namespace SQLI\EzToolboxBundle\Form\EntityManager;
 
+use Doctrine\Common\Collections\Collection;
+use Doctrine\ORM\EntityRepository;
+use ReflectionClass;
+use Symfony\Bridge\Doctrine\Form\Type\EntityType;
 use Symfony\Component\Form\AbstractType;
 use Symfony\Component\Form\CallbackTransformer;
 use Symfony\Component\Form\Extension\Core\Type\ChoiceType;
+use Symfony\Component\Form\Extension\Core\Type\CollectionType;
 use Symfony\Component\Form\Extension\Core\Type\SubmitType;
 use Symfony\Component\Form\Extension\Core\Type\TextareaType;
 use Symfony\Component\Form\FormBuilderInterface;
@@ -43,33 +48,45 @@ class EditElementType extends AbstractType
                 if (!empty($propertyInfos['description'])) {
                     $params['attr']['title'] = $propertyInfos['description'];
                 }
-
-                $formType = null;
-                if (is_array($propertyInfos['choices']) && !empty($propertyInfos['choices'])) {
-                    $formType = ChoiceType::class;
-                    $params['choices'] = $propertyInfos['choices'];
-                } elseif ($propertyInfos['type'] === "object" || $propertyInfos['type'] === "array") {
-                    $formType = TextareaType::class;
-                }
-
                 // If context is defined as view, readonly parameter is added
                 if ($options['context'] == 'view') {
                     $params['attr']['readonly'] = true;
                 }
 
-                // Add field on Form
-                $builder->add($propertyName, $formType, $params);
+                $formType = null;
+                if (is_array($propertyInfos['choices']) && !empty($propertyInfos['choices'])) {
+                    $formType = ChoiceType::class;
+                    $params['choices'] = $propertyInfos['choices'];
+                    $builder->add($propertyName, $formType, $params);
+                } elseif ($propertyInfos['type'] === "object" || $propertyInfos['type'] === "array") {
+                    $formType = TextareaType::class;
+                    $builder->add($propertyName, $formType, $params);
+                } elseif (!is_null($propertyInfos['manytoone'])) {
+                    $formType = EntityType::class;
+                    $params['class'] = $propertyInfos['manytoone']['targetEntity'];
+                    $params['attr']['manytoone'] = true;
+                    $builder->add($propertyName, $formType, $params);
+                } elseif (!is_null($propertyInfos['onetomany'])) {
+                    $params['attr']['onetomany'] = true;
+                    $builder->add($propertyName, null, $params);
+                } else {
+                    $builder->add($propertyName, $formType, $params);
+                }
 
+                // Add field on Form
+                //$builder->add($propertyName, $formType, $params);
                 // Support display of objects and arrays : serialize them before display
                 if ($propertyInfos['type'] === "object" || $propertyInfos['type'] === "array") {
-                    $builder->get($propertyName)->addViewTransformer(new CallbackTransformer(
-                        function ($toSerialize) {
-                            return serialize($toSerialize);
-                        },
-                        function ($toUnserialize) {
-                            return unserialize($toUnserialize);
-                        }
-                    ));
+                    $builder->get($propertyName)->addViewTransformer(
+                        new CallbackTransformer(
+                            function ($toSerialize) {
+                                return serialize($toSerialize);
+                            },
+                            function ($toUnserialize) {
+                                return unserialize($toUnserialize);
+                            }
+                        )
+                    );
                 }
             }
         }

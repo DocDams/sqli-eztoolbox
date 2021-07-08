@@ -195,7 +195,10 @@ class EntityHelper
         if ($object[$property_name] instanceof \DateTime) {
             // Datetime doesn't have a __toString method
             return date_format($object[$property_name], "c");
-        } else {
+        } elseif ($object[$property_name] instanceof \stdClass) {
+            return (serialize($object[$property_name]));
+        }
+        else {
             return strval($object[$property_name]);
         }
     }
